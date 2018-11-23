@@ -1,12 +1,90 @@
 package org.neo4j.graphalgo.impl;
 
+import org.neo4j.graphalgo.api.*;
+import org.neo4j.graphalgo.core.utils.ParallelUtil;
 import org.neo4j.graphalgo.core.write.Exporter;
 import org.neo4j.graphalgo.core.write.PropertyTranslator;
 import org.neo4j.graphalgo.core.write.Translators;
 
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+
 import static org.neo4j.graphalgo.core.utils.ArrayUtil.binaryLookup;
 
 public class ArticleRank extends Algorithm<ArticleRank> implements ArticleRankAlgorithm {
+
+    private final ComputeSteps computeSteps;
+    private static double averageDegree;
+    private Graph graph;
+    /**
+     * Forces sequential use. If you want parallelism, prefer
+     * {@link #ArticleRank(Graph, ExecutorService, int, int, IdMapping, NodeIterator, RelationshipIterator, Degrees, double)}
+     */
+
+    ArticleRank(
+            Graph graph,
+            IdMapping idMapping,
+            NodeIterator nodeIterator,
+            RelationshipIterator relationshipIterator,
+            Degrees degrees,
+            double dampingFactor) {
+
+        this(   graph,
+                null,
+                -1,
+                ParallelUtil.DEFAULT_BATCH_SIZE,
+                idMapping,
+                nodeIterator,
+                relationshipIterator,
+                degrees,
+                dampingFactor);
+
+
+
+    }
+
+    ArticleRank(
+            Graph graph,
+            ExecutorService executor,
+            int concurrency,
+            int batchSize,
+            IdMapping idMapping,
+            NodeIterator nodeIterator,
+            RelationshipIterator relationshipIterator,
+            Degrees degrees,
+            double dampingFactor) {
+        this.graph = graph;
+        List<Partition> partitions;
+        if (ParallelUtil.canRunInParallel(executor)) {
+            partitions = partitionGraph(
+                    adjustBatchSize(batchSize),
+                    idMapping,
+                    nodeIterator,
+                    degrees);
+        } else {
+            executor = null;
+            partitions = createSinglePartition(idMapping, degrees);
+        }
+
+        computeSteps = createComputeSteps(
+                concurrency,
+                dampingFactor,
+                relationshipIterator,
+                degrees,
+                partitions,
+                executor);
+    }
+
+
+    private int srcRankDelta;
+
+
+
+    @Override
+    public Algorithm<?> algorithm() {
+        return this;
+    }
+
     private static final class PartitionedPrimitiveDoubleArrayResult implements ArticleRankResult, PropertyTranslator.OfDouble<double[][]> {
         private final double[][] partitions;
         private final int[] starts;
@@ -80,6 +158,7 @@ public class ArticleRank extends Algorithm<ArticleRank> implements ArticleRankAl
 
     @Override
     public ArticleRank release() {
+        computeSteps.release();
         return this;
     }
 }
