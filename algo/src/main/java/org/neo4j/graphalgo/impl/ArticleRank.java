@@ -6,7 +6,7 @@ import org.neo4j.graphalgo.core.write.Translators;
 
 import static org.neo4j.graphalgo.core.utils.ArrayUtil.binaryLookup;
 
-public class ArticleRank {
+public class ArticleRank extends Algorithm<ArticleRank> implements ArticleRankAlgorithm {
     private static final class PartitionedPrimitiveDoubleArrayResult implements ArticleRankResult, PropertyTranslator.OfDouble<double[][]> {
         private final double[][] partitions;
         private final int[] starts;
@@ -71,5 +71,15 @@ public class ArticleRank {
                 final Exporter exporter) {
             exporter.write(propertyName, result, Translators.DOUBLE_ARRAY_TRANSLATOR);
         }
+    }
+
+    @Override
+    public ArticleRank me() {
+        return this;
+    }
+
+    @Override
+    public ArticleRank release() {
+        return this;
     }
 }
