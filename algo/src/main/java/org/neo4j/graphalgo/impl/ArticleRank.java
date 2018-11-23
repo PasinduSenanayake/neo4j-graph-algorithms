@@ -85,6 +85,65 @@ public class ArticleRank extends Algorithm<ArticleRank> implements ArticleRankAl
         return this;
     }
 
+    //
+
+    private static final class Partition {
+
+        private final int startNode;
+        private final int nodeCount;
+
+        Partition(
+                int allNodeCount,
+                PrimitiveIntIterator nodes,
+                Degrees degrees,
+                int startNode,
+                int batchSize) {
+
+            int nodeCount;
+            int partitionSize = 0;
+            if (batchSize > 0) {
+                nodeCount = 0;
+                while (partitionSize < batchSize && nodes.hasNext()) {
+                    int nodeId = nodes.next();
+                    ++nodeCount;
+                    partitionSize += degrees.degree(nodeId, Direction.OUTGOING);
+                }
+            } else {
+                nodeCount = allNodeCount;
+            }
+
+            this.startNode = startNode;
+            this.nodeCount = nodeCount;
+        }
+    }
+
+
+//    void singleIteration() {
+//        int startNode = this.startNode;
+//        int endNode = this.endNode;
+//        RelationshipIterator rels = this.relationshipIterator;
+//        for (int nodeId = startNode; nodeId < endNode; ++nodeId) {
+//            double delta = deltas[nodeId - startNode];
+//            if (delta > 0) {
+//                int degree = degrees.degree(nodeId, Direction.OUTGOING);
+//                if (degree > 0) {
+//                    srcRankDelta = (int) (100_000 * (delta / (degree + averageDegree)));
+//                    rels.forEachRelationship(nodeId, Direction.OUTGOING, this);
+//                }
+//            }
+//        }
+//    }
+//
+//    public boolean accept(int sourceNodeId, int targetNodeId, long relationId) {
+//        if (srcRankDelta != 0) {
+//            int idx = binaryLookup(targetNodeId, starts);
+//            nextScores[idx][targetNodeId - starts[idx]] += srcRankDelta;
+//        }
+//        return true;
+//    }
+
+    //
+
     private static final class PartitionedPrimitiveDoubleArrayResult implements ArticleRankResult, PropertyTranslator.OfDouble<double[][]> {
         private final double[][] partitions;
         private final int[] starts;
