@@ -1,5 +1,7 @@
 package org.neo4j.graphalgo.results;
 
+import org.neo4j.graphdb.Node;
+
 public class ArticleRankScore {
 
     public final long nodeId;

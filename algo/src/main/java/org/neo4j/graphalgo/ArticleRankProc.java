@@ -11,9 +11,18 @@ import org.neo4j.graphalgo.core.utils.TerminationFlag;
 import org.neo4j.graphalgo.core.utils.paged.AllocationTracker;
 import org.neo4j.graphalgo.core.write.Exporter;
 import org.neo4j.graphalgo.impl.Algorithm;
+import org.neo4j.graphalgo.impl.PageRankAlgorithm;
+import org.neo4j.graphalgo.impl.PageRankResult;
 import org.neo4j.graphalgo.impl.ArticleRankAlgorithm;
 import org.neo4j.graphalgo.impl.ArticleRankResult;
 import org.neo4j.graphalgo.results.ArticleRankScore;
+import org.neo4j.graphalgo.results.PageRankScore;
+import org.neo4j.graphdb.Direction;
+import org.neo4j.graphdb.Node;
+import org.neo4j.kernel.api.KernelTransaction;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
+import org.neo4j.logging.Log;
+import org.neo4j.procedure.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +33,51 @@ import java.util.stream.Stream;
 
 public class ArticleRankProc {
 
+    public static final String CONFIG_DAMPING = "dampingFactor";
+
+    public static final Double DEFAULT_DAMPING = 0.85;
+    public static final Integer DEFAULT_ITERATIONS = 20;
+    public static final String DEFAULT_SCORE_PROPERTY = "articlerank";
+
+    @Context
+    public GraphDatabaseAPI api;
+
+    @Context
+    public Log log;
+
+    @Context
+    public KernelTransaction transaction;
+
+    @Procedure(value = "algo.articleRank", mode = Mode.WRITE)
+    @Description("CALL algo.articleRank(label:String, relationship:String, " +
+            "{iterations:5, dampingFactor:0.85, weightProperty: null, write: true, writeProperty:'articlerank', concurrency:4}) " +
+            "YIELD nodes, iterations, loadMillis, computeMillis, writeMillis, dampingFactor, write, writeProperty" +
+            " - calculates page rank and potentially writes back")
+    public Stream<ArticleRankScore.Stats> articleRank(
+            @Name(value = "label", defaultValue = "") String label,
+            @Name(value = "relationship", defaultValue = "") String relationship,
+            @Name(value = "config", defaultValue = "{}") Map<String, Object> config) {
+
+        ProcedureConfiguration configuration = ProcedureConfiguration.create(config);
+
+        ArticleRankScore.Stats.Builder statsBuilder = new ArticleRankScore.Stats.Builder();
+        AllocationTracker tracker = AllocationTracker.create();
+        final Graph graph = load(label, relationship, tracker, configuration.getGraphImpl(), statsBuilder, configuration);
+
+        if(graph.nodeCount() == 0) {
+            graph.release();
+            return Stream.of(statsBuilder.build());
+        }
+
+        TerminationFlag terminationFlag = TerminationFlag.wrap(transaction);
+        ArticleRankResult scores = evaluate(graph, tracker, terminationFlag, configuration, statsBuilder);
+
+        log.info("ArticleRank: overall memory usage: %s", tracker.getUsageString());
+
+        write(graph, terminationFlag, scores, configuration, statsBuilder);
+
+        return Stream.of(statsBuilder.build());
+    }
 
     @Procedure(value = "algo.articleRank.stream", mode = Mode.READ)
     @Description("CALL algo.articleRank.stream(label:String, relationship:String, " +
